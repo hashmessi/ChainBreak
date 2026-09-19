@@ -1,13 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import { Play, Split, ShieldCheck, ShieldAlert, ArrowRight, Filter, AlertTriangle, HelpCircle } from 'lucide-react';
+import { Play, Split, ShieldAlert, ShieldCheck, AlertTriangle, HelpCircle, Terminal, Flame, CheckCircle2 } from 'lucide-react';
 
 const CATEGORIES = [
-  { key: 'ALL', label: 'ALL' },
-  { key: 'ATTACK', label: 'ATTACKS' },
-  { key: 'SAFE', label: 'SAFE' },
-  { key: 'NEAR_MISS', label: 'NEAR-MISS' },
-  { key: 'FAILURE_MODE', label: 'FAILURES' },
-  { key: 'UNKNOWN_TOOL', label: 'UNKNOWN' },
+  { key: 'ALL', label: 'ALL', icon: Terminal },
+  { key: 'ATTACK', label: 'ATTACKS', icon: Flame },
+  { key: 'SAFE', label: 'SAFE', icon: ShieldCheck },
+  { key: 'NEAR_MISS', label: 'NEAR-MISS', icon: AlertTriangle },
+  { key: 'FAILURE_MODE', label: 'FAILURES', icon: ShieldAlert },
+  { key: 'UNKNOWN_TOOL', label: 'UNKNOWN', icon: HelpCircle },
 ];
 
 export default function ScenarioSelector({
@@ -20,23 +20,25 @@ export default function ScenarioSelector({
 }) {
   const [activeCategory, setActiveCategory] = useState('ALL');
 
-  // Filter scenarios
+  // Filter scenarios with case-insensitive normalization
   const filteredScenarios = useMemo(() => {
     if (activeCategory === 'ALL') return scenarios;
-    return scenarios.filter((s) => s.category === activeCategory);
+    return scenarios.filter((s) => (s.category || '').toUpperCase() === activeCategory);
   }, [scenarios, activeCategory]);
 
-  // Counts by category
+  // Counts by category with case-insensitive normalization
   const categoryCounts = useMemo(() => {
     const counts = { ALL: scenarios.length };
     scenarios.forEach((s) => {
-      counts[s.category] = (counts[s.category] || 0) + 1;
+      const catUpper = (s.category || '').toUpperCase();
+      counts[catUpper] = (counts[catUpper] || 0) + 1;
     });
     return counts;
   }, [scenarios]);
 
   const getCategoryBadgeClass = (category) => {
-    switch (category) {
+    const cat = (category || '').toUpperCase();
+    switch (cat) {
       case 'ATTACK':
         return 'cat-attack';
       case 'SAFE':
@@ -54,19 +56,22 @@ export default function ScenarioSelector({
 
   return (
     <div className="scenario-selector-container" id="scenario-selector-panel">
-      {/* Category Filter Tabs */}
+      {/* Category Filter Tabs / Dock */}
       <div className="category-filter-tabs">
         {CATEGORIES.map((tab) => {
           const count = categoryCounts[tab.key] || 0;
+          const IconComponent = tab.icon;
+          const isActive = activeCategory === tab.key;
           return (
             <button
               key={tab.key}
               type="button"
-              className={`cat-tab-btn ${activeCategory === tab.key ? 'active' : ''}`}
+              className={`cat-tab-btn ${isActive ? 'active' : ''}`}
               onClick={() => setActiveCategory(tab.key)}
             >
-              <span>{tab.label}</span>
-              <span className="tab-count">{count}</span>
+              <IconComponent size={12} className="tab-icon" />
+              <span className="tab-label">{tab.label}</span>
+              <span className={`tab-count ${isActive ? 'active-count' : ''}`}>{count}</span>
             </button>
           );
         })}
@@ -76,12 +81,14 @@ export default function ScenarioSelector({
       <div className="scenario-deck-list" id="scenario-deck-list">
         {filteredScenarios.length === 0 ? (
           <div className="no-scenarios-msg">
-            No scenarios found in this category.
+            <ShieldAlert size={20} style={{ color: 'var(--color-compass-gold)', marginBottom: '8px' }} />
+            <div>No scenarios found in this category.</div>
           </div>
         ) : (
           filteredScenarios.map((scen) => {
             const isSelected = selectedScenario && selectedScenario.id === scen.id;
             const actionCount = scen.actions?.length || 0;
+            const catUpper = (scen.category || '').toUpperCase();
 
             return (
               <div
@@ -94,7 +101,7 @@ export default function ScenarioSelector({
                   <div className="scenario-id-tag">
                     <span className="scen-number">{scen.id}</span>
                     <span className={`scen-cat-badge ${getCategoryBadgeClass(scen.category)}`}>
-                      {scen.category.replace(/_/g, ' ')}
+                      {catUpper.replace(/_/g, ' ')}
                     </span>
                   </div>
                   <span className="scen-steps-count">
@@ -108,11 +115,11 @@ export default function ScenarioSelector({
                 <div className="scenario-card-footer">
                   <div className="expected-outcomes">
                     <span className="outcome-tag">
-                      EXP BASELINE: <strong>{scen.expected_baseline}</strong>
+                      BASELINE: <strong className={scen.expected_baseline === 'ALLOW' ? 'val-allow' : 'val-block'}>{scen.expected_baseline}</strong>
                     </span>
-                    <span className="outcome-sep">→</span>
+                    <span className="outcome-sep">➔</span>
                     <span className="outcome-tag">
-                      PROTECTED: <strong>{scen.expected_protected}</strong>
+                      PROTECTED: <strong className={scen.expected_protected === 'BLOCK' ? 'val-block' : scen.expected_protected === 'ALLOW' ? 'val-allow' : 'val-hold'}>{scen.expected_protected}</strong>
                     </span>
                   </div>
 
@@ -125,8 +132,8 @@ export default function ScenarioSelector({
                         onClick={() => onRunCounterfactual(scen.id)}
                         id={`btn-run-counterfactual-${scen.id}`}
                       >
-                        <Split size={13} />
-                        <span>{isLoading ? 'RUNNING DUAL-TRACK...' : 'RUN COUNTERFACTUAL'}</span>
+                        <Split size={14} />
+                        <span>{isLoading ? 'INTERCEPTING...' : 'RUN COUNTERFACTUAL'}</span>
                       </button>
                       <button
                         type="button"
