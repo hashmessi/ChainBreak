@@ -26,43 +26,59 @@ export default function App() {
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [showBenchmarkModal, setShowBenchmarkModal] = useState(false);
 
-  // 1. Health check & scenario catalog fetch
+  // 1. Periodic health check & scenario catalog fetch
   useEffect(() => {
-    async function init() {
-      try {
-        const healthRes = await fetch('/api/health');
-        if (healthRes.ok) {
-          const healthData = await healthRes.json();
-          setBackendHealth(healthData);
-        } else {
-          setBackendHealth({ status: 'error' });
-        }
-      } catch (err) {
-        setBackendHealth({ status: 'offline', error: err.message });
-      } finally {
-        setLoadingHealth(false);
-      }
+    let mounted = true;
 
+    async function loadScenarios() {
       try {
         const scenRes = await fetch('/api/scenarios');
         if (scenRes.ok) {
           const data = await scenRes.json();
           const list = data.scenarios || [];
-          setScenarios(list);
-          // Default to S6 (Cumulative Context Exfiltration - True Trajectory Attack) or S1
-          const defaultScen = list.find((s) => s.id === 'S6') || list[0];
-          if (defaultScen) {
-            setSelectedScenario(defaultScen);
+          if (mounted) {
+            setScenarios(list);
+            setSelectedScenario((prev) => prev || list.find((s) => s.id === 'S6') || list[0]);
           }
         }
       } catch (err) {
         console.error('Failed to load scenarios:', err);
       } finally {
-        setLoadingScenarios(false);
+        if (mounted) setLoadingScenarios(false);
       }
     }
-    init();
-  }, []);
+
+    async function checkHealth() {
+      try {
+        const healthRes = await fetch('/api/health');
+        if (healthRes.ok) {
+          const healthData = await healthRes.json();
+          if (mounted) {
+            setBackendHealth(healthData);
+            setRunError((prev) => (prev && prev.includes('Backend engine unreachable') ? null : prev));
+            if (scenarios.length === 0) {
+              loadScenarios();
+            }
+          }
+        } else {
+          if (mounted) setBackendHealth({ status: 'error' });
+        }
+      } catch (err) {
+        if (mounted) setBackendHealth({ status: 'offline', error: err.message });
+      } finally {
+        if (mounted) setLoadingHealth(false);
+      }
+    }
+
+    checkHealth();
+    loadScenarios();
+
+    const timer = setInterval(checkHealth, 3000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [scenarios.length]);
 
   // 2. Run Counterfactual (Dual-track baseline vs protected)
   const handleRunCounterfactual = async (scenarioId) => {
@@ -85,7 +101,15 @@ export default function App() {
       setActiveRunMode('PROTECTED'); // Start in protected view to observe invariant enforcement
     } catch (err) {
       console.error('Counterfactual run failed:', err);
-      setRunError(err.message);
+      const isOffline = err.message === 'Failed to fetch' || err.message.includes('NetworkError');
+      setRunError(
+        isOffline
+          ? 'Backend engine unreachable at http://127.0.0.1:8000. Please start the FastAPI backend.'
+          : err.message
+      );
+      if (isOffline) {
+        setBackendHealth({ status: 'offline' });
+      }
     } finally {
       setIsRunning(false);
     }
@@ -125,7 +149,15 @@ export default function App() {
       setActiveRunMode(mode);
     } catch (err) {
       console.error('Single run failed:', err);
-      setRunError(err.message);
+      const isOffline = err.message === 'Failed to fetch' || err.message.includes('NetworkError');
+      setRunError(
+        isOffline
+          ? 'Backend engine unreachable at http://127.0.0.1:8000. Please start the FastAPI backend.'
+          : err.message
+      );
+      if (isOffline) {
+        setBackendHealth({ status: 'offline' });
+      }
     } finally {
       setIsRunning(false);
     }
@@ -145,6 +177,15 @@ export default function App() {
       setEvaluationReport(report);
     } catch (err) {
       console.error('Evaluation run failed:', err);
+      const isOffline = err.message === 'Failed to fetch' || err.message.includes('NetworkError');
+      setRunError(
+        isOffline
+          ? 'Backend engine unreachable at http://127.0.0.1:8000. Please start the FastAPI backend.'
+          : err.message
+      );
+      if (isOffline) {
+        setBackendHealth({ status: 'offline' });
+      }
     } finally {
       setIsEvaluating(false);
     }
