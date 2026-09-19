@@ -1,0 +1,1 @@
+"""ChainBreak tests package."""

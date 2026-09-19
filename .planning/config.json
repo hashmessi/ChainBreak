@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "project": "ChainBreak",
+  "milestone": 1,
+  "current_phase": 7,
+  "phase_status": {
+    "1": "complete",
+    "2": "complete",
+    "3": "complete",
+    "4": "complete",
+    "5": "complete",
+    "6": "complete",
+    "7": "next"
+  },
+  "last_updated": "2026-09-19",
+  "build_window_start": "2026-09-19T10:00:00-04:00",
+  "build_window_end": "2026-09-20T10:00:00-04:00",
+  "stack": {
+    "backend": "Python 3.12 + FastAPI",
+    "frontend": "React + Vite",
+    "llm": "OpenRouter (free tier)",
+    "db": "none (in-memory)"
+  },
+  "key_decisions": [
+    "LLM only extracts semantics, never makes security decisions",
+    "Deterministic invariant engine in pure Python",
+    "OpenRouter with deterministic fallback for demo reliability",
+    "Fail-closed: LLM failure → HOLD",
+    "5 scenarios: 3 dangerous (BLOCK), 2 safe (ALLOW)"
+  ]
+}
