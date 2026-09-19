@@ -68,7 +68,7 @@ export default function ActionCard({
       {/* Step Header */}
       <div className="action-card-header">
         <div className="step-indicator">
-          <span className="step-badge">STEP {String(step_index).padStart(2, '0')}</span>
+          <span className="step-badge">STEP {String(Number(step_index) + 1).padStart(2, '0')}</span>
           <div className="tool-identity">
             {getToolIcon()}
             <code className="tool-name">{tool}</code>
@@ -137,9 +137,9 @@ export default function ActionCard({
                 type="button"
                 className="step-ref-link"
                 onClick={() => onStepRefClick && onStepRefClick(stepNum)}
-                title={`Highlight Step ${stepNum}`}
+                title={`Highlight Step ${Number(stepNum) + 1}`}
               >
-                Step {stepNum}
+                Step {Number(stepNum) + 1}
                 {idx < triggered_by.length - 1 ? ', ' : ''}
               </button>
             ))}

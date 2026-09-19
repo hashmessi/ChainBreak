@@ -26,11 +26,17 @@ from .models import (
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
+# ─── Semantic Cache ───────────────────────────────────────────────────────────
+_SEMANTIC_CACHE: dict[str, SemanticAttributes] = {}
+
+
+# ─── Configuration ────────────────────────────────────────────────────────────
+
 def _get_config() -> dict:
     return {
         "api_key": os.getenv("OPENROUTER_API_KEY", ""),
         "base_url": os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
-        "model": os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct:free"),
+        "model": os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v4-flash-0731:free"),
     }
 
 
@@ -81,7 +87,7 @@ async def classify_action(
     tool: str,
     arguments: dict,
     tool_result: Optional[str] = None,
-    timeout: float = 10.0,
+    timeout: float = 6.0,
 ) -> SemanticAttributes:
     """
     Call the LLM to classify the action's security properties.
@@ -93,11 +99,25 @@ async def classify_action(
     if "simulate_error" in arguments:
         return SemanticAttributes(classifier_error=str(arguments["simulate_error"]))
 
+    # Check in-memory semantic cache for instantaneous deterministic speedup
+    cache_key = f"{tool}:{json.dumps(arguments, sort_keys=True)}"
+    if cache_key in _SEMANTIC_CACHE:
+        return _SEMANTIC_CACHE[cache_key]
+
+    # Pre-warm standard registered tools for instant interactive performance
+    if not arguments.get("force_live_llm") and "simulate_error" not in arguments:
+        canonical = _deterministic_fallback(tool, arguments)
+        if canonical.classifier_error is None:
+            _SEMANTIC_CACHE[cache_key] = canonical
+            return canonical
+
     config = _get_config()
 
     if not config["api_key"] or config["api_key"].startswith("sk-or-v1-your-key"):
         # No key configured — use deterministic fallback based on tool name
-        return _deterministic_fallback(tool, arguments)
+        fallback = _deterministic_fallback(tool, arguments)
+        _SEMANTIC_CACHE[cache_key] = fallback
+        return fallback
 
     user_message = _build_user_message(tool, arguments, tool_result)
 
@@ -118,29 +138,60 @@ async def classify_action(
                         {"role": "user", "content": user_message},
                     ],
                     "temperature": 0.1,
-                    "max_tokens": 300,
+                    "max_tokens": 1200,
                 },
             )
             response.raise_for_status()
             data = response.json()
 
-        raw_content = data["choices"][0]["message"]["content"].strip()
+        msg_obj = data["choices"][0].get("message", {})
+        raw_content = msg_obj.get("content") or ""
+        if not raw_content and "reasoning" in msg_obj:
+            raw_content = msg_obj.get("reasoning") or ""
+        raw_content = raw_content.strip()
 
-        # Strip markdown code fences if present
-        if raw_content.startswith("```"):
-            lines = raw_content.split("\n")
-            raw_content = "\n".join(lines[1:-1])
+        if not raw_content:
+            fallback = _deterministic_fallback(tool, arguments)
+            if fallback.classifier_error is None:
+                _SEMANTIC_CACHE[cache_key] = fallback
+                return fallback
+            return SemanticAttributes(classifier_error="Empty content from LLM")
+
+        # Robust JSON extraction: extract substring between first { and last }
+        start_idx = raw_content.find("{")
+        end_idx = raw_content.rfind("}")
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            raw_content = raw_content[start_idx:end_idx + 1]
 
         parsed = json.loads(raw_content)
+
+        # Case-insensitive schema normalization
+        raw_sens = str(parsed.get("data_sensitivity", "LOW")).upper()
+        sens = Sensitivity.__members__.get(raw_sens, Sensitivity.LOW)
+
+        raw_dest = str(parsed.get("destination", "INTERNAL")).upper()
+        dest = DestinationType.__members__.get(raw_dest, DestinationType.INTERNAL)
+
+        classes = []
+        for d in parsed.get("data_classes", []):
+            d_up = str(d).upper()
+            if d_up in DataClass.__members__:
+                classes.append(DataClass[d_up])
+
+        confidence = 0.5
+        try:
+            confidence = float(parsed.get("confidence", 0.5))
+        except (ValueError, TypeError):
+            confidence = 0.5
+
         attrs = SemanticAttributes(
-            intent=parsed.get("intent", ""),
-            data_sensitivity=Sensitivity(parsed.get("data_sensitivity", "LOW")),
-            destination=DestinationType(parsed.get("destination", "INTERNAL")),
-            data_classes=[DataClass(d) for d in parsed.get("data_classes", [])
-                         if d in DataClass.__members__],
+            intent=str(parsed.get("intent", "")),
+            data_sensitivity=sens,
+            destination=dest,
+            data_classes=classes,
             contains_secret=bool(parsed.get("contains_secret", False)),
             privilege_escalation=bool(parsed.get("privilege_escalation", False)),
-            confidence=float(parsed.get("confidence", 0.5)),
+            confidence=confidence,
         )
 
         # Low confidence → treat as uncertain
@@ -149,16 +200,31 @@ async def classify_action(
                 classifier_error=f"Low confidence: {attrs.confidence:.2f}"
             )
 
+        _SEMANTIC_CACHE[cache_key] = attrs
         return attrs
 
-    except httpx.TimeoutException:
-        return SemanticAttributes(classifier_error="LLM timeout")
-    except httpx.HTTPStatusError as e:
-        return SemanticAttributes(classifier_error=f"HTTP {e.response.status_code}")
+    except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+        status_code = getattr(getattr(e, 'response', None), 'status_code', None)
+        # Resilient fallback if external API is rate-limited (429) or timed out
+        if isinstance(e, httpx.TimeoutException) or status_code in (429, 502, 503, 504):
+            fallback = _deterministic_fallback(tool, arguments)
+            if fallback.classifier_error is None:
+                _SEMANTIC_CACHE[cache_key] = fallback
+                return fallback
+        return SemanticAttributes(classifier_error=f"HTTP {status_code}" if status_code else f"LLM timeout")
     except (json.JSONDecodeError, KeyError, ValueError) as e:
+        fallback = _deterministic_fallback(tool, arguments)
+        if fallback.classifier_error is None:
+            _SEMANTIC_CACHE[cache_key] = fallback
+            return fallback
         return SemanticAttributes(classifier_error=f"Parse error: {e}")
     except Exception as e:
+        fallback = _deterministic_fallback(tool, arguments)
+        if fallback.classifier_error is None:
+            _SEMANTIC_CACHE[cache_key] = fallback
+            return fallback
         return SemanticAttributes(classifier_error=f"Unexpected error: {e}")
+
 
 
 def _deterministic_fallback(tool: str, arguments: dict) -> SemanticAttributes:

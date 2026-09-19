@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Shield, Compass, Play, AlertCircle, ArrowUpRight, Split, RefreshCw, BarChart2, CheckCircle2 } from 'lucide-react';
 import ScenarioSelector from './components/ScenarioSelector';
 import RunTimeline from './components/RunTimeline';
@@ -20,6 +20,9 @@ export default function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [runError, setRunError] = useState(null);
   const [highlightedStep, setHighlightedStep] = useState(null);
+
+  // Race condition guard ref
+  const activeRequestIdRef = useRef(0);
 
   // Benchmark suite evaluation state
   const [evaluationReport, setEvaluationReport] = useState(null);
@@ -85,6 +88,7 @@ export default function App() {
     const id = scenarioId || selectedScenario?.id;
     if (!id) return;
 
+    const reqId = ++activeRequestIdRef.current;
     setIsRunning(true);
     setRunError(null);
     setHighlightedStep(null);
@@ -97,21 +101,27 @@ export default function App() {
         throw new Error(`Execution error: HTTP ${res.status}`);
       }
       const data = await res.json();
-      setRunResult(data);
-      setActiveRunMode('PROTECTED'); // Start in protected view to observe invariant enforcement
+      if (activeRequestIdRef.current === reqId) {
+        setRunResult(data);
+        setActiveRunMode('PROTECTED'); // Start in protected view to observe invariant enforcement
+      }
     } catch (err) {
-      console.error('Counterfactual run failed:', err);
-      const isOffline = err.message === 'Failed to fetch' || err.message.includes('NetworkError');
-      setRunError(
-        isOffline
-          ? 'Backend engine unreachable at http://127.0.0.1:8000. Please start the FastAPI backend.'
-          : err.message
-      );
-      if (isOffline) {
-        setBackendHealth({ status: 'offline' });
+      if (activeRequestIdRef.current === reqId) {
+        console.error('Counterfactual run failed:', err);
+        const isOffline = err.message === 'Failed to fetch' || err.message.includes('NetworkError');
+        setRunError(
+          isOffline
+            ? 'Backend engine unreachable at http://127.0.0.1:8000. Please start the FastAPI backend.'
+            : err.message
+        );
+        if (isOffline) {
+          setBackendHealth({ status: 'offline' });
+        }
       }
     } finally {
-      setIsRunning(false);
+      if (activeRequestIdRef.current === reqId) {
+        setIsRunning(false);
+      }
     }
   };
 
@@ -120,6 +130,7 @@ export default function App() {
     const id = scenarioId || selectedScenario?.id;
     if (!id) return;
 
+    const reqId = ++activeRequestIdRef.current;
     setIsRunning(true);
     setRunError(null);
     setHighlightedStep(null);
@@ -137,29 +148,37 @@ export default function App() {
         throw new Error(`Run error: HTTP ${res.status}`);
       }
       const chainState = await res.json();
-      // Synthesize a counterfactual shape so the UI renders seamlessly
-      setRunResult((prev) => ({
-        scenario_id: id,
-        baseline: mode === 'BASELINE' ? chainState : prev?.baseline || chainState,
-        protected: mode === 'PROTECTED' ? chainState : prev?.protected || chainState,
-        attack_prevented: chainState.final_decision === 'BLOCK',
-        proof_statement: `Executed single trajectory in ${mode} mode.`,
-        divergence_step: chainState.blocked_at_step,
-      }));
-      setActiveRunMode(mode);
+      if (activeRequestIdRef.current === reqId) {
+        // Synthesize a counterfactual shape so the UI renders seamlessly
+        setRunResult((prev) => ({
+          scenario: prev?.scenario || selectedScenario || { id, name: id },
+          scenario_id: id,
+          baseline: mode === 'BASELINE' ? chainState : prev?.baseline || chainState,
+          protected: mode === 'PROTECTED' ? chainState : prev?.protected || chainState,
+          attack_prevented: chainState.final_decision === 'BLOCK',
+          correctly_blocked: chainState.final_decision === 'BLOCK',
+          proof_statement: `Executed single trajectory in ${mode} mode.`,
+          divergence_step: chainState.blocked_at_step,
+        }));
+        setActiveRunMode(mode);
+      }
     } catch (err) {
-      console.error('Single run failed:', err);
-      const isOffline = err.message === 'Failed to fetch' || err.message.includes('NetworkError');
-      setRunError(
-        isOffline
-          ? 'Backend engine unreachable at http://127.0.0.1:8000. Please start the FastAPI backend.'
-          : err.message
-      );
-      if (isOffline) {
-        setBackendHealth({ status: 'offline' });
+      if (activeRequestIdRef.current === reqId) {
+        console.error('Single run failed:', err);
+        const isOffline = err.message === 'Failed to fetch' || err.message.includes('NetworkError');
+        setRunError(
+          isOffline
+            ? 'Backend engine unreachable at http://127.0.0.1:8000. Please start the FastAPI backend.'
+            : err.message
+        );
+        if (isOffline) {
+          setBackendHealth({ status: 'offline' });
+        }
       }
     } finally {
-      setIsRunning(false);
+      if (activeRequestIdRef.current === reqId) {
+        setIsRunning(false);
+      }
     }
   };
 

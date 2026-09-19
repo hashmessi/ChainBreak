@@ -17,12 +17,16 @@ export default function ViolationPanel({ chainState, scenarioId = '', onHighligh
   const reasonText = culpritAction?.reason || 'Deterministic security boundary violated.';
   const triggeredSteps = culpritAction?.triggered_by || [];
 
-  // Robust step index calculation (Never Step N/A or Step 00)
-  const haltedStepNum = chainState.blocked_at_step || (culpritAction?.step_index > 0 ? culpritAction.step_index : 1);
+  // Robust step index calculation (1-indexed for clear human presentation)
+  const rawHalted = chainState.blocked_at_step !== null && chainState.blocked_at_step !== undefined
+    ? chainState.blocked_at_step
+    : culpritAction?.step_index;
+  const haltedStepNum = rawHalted !== null && rawHalted !== undefined ? Number(rawHalted) + 1 : 1;
 
-  // Filter triggered steps to valid positive predecessor steps
+  // Filter triggered steps to valid positive predecessor steps (1-indexed)
   const validTriggeredSteps = triggeredSteps
-    .filter((s) => s > 0 && s !== haltedStepNum)
+    .map((s) => Number(s) + 1)
+    .filter((s) => s !== haltedStepNum)
     .sort((a, b) => a - b);
 
   // Generate Judge's Plain-English Executive Summary

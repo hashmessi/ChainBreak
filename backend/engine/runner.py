@@ -61,18 +61,18 @@ async def intercept_action(
     # Run tool first in BASELINE to get output for classification context
     # In PROTECTED: classify BEFORE execution; tool result is only available if ALLOW
     if state.run_mode == RunMode.BASELINE:
-        # Baseline: execute regardless, then classify (for record-keeping only)
+        # Baseline: execute regardless, then classify (reuses cached semantics from protected run)
         try:
             tool_result, _ = execute_tool(tool, arguments)
         except Exception as e:
             tool_result = f"[TOOL ERROR] {e}"
         
-        semantics = await classify_action(tool, arguments, tool_result)
+        semantics = await classify_action(tool, arguments)
         event.semantics = semantics
         event.executed = True
         event.tool_result = tool_result
         event.decision = Decision.ALLOW
-        event.reason = "Baseline mode: no protection active."
+        event.reason = "Baseline mode: unconstrained execution (no invariant enforcement)."
         update_chain_state(state, event)
         return event
 
@@ -152,8 +152,9 @@ async def run_counterfactual(scenario: Scenario) -> CounterfactualResult:
     """
     t0 = time.time()
 
-    baseline = await run_scenario(scenario, RunMode.BASELINE)
+    # Run PROTECTED first so that semantic classifications populate cache
     protected = await run_scenario(scenario, RunMode.PROTECTED)
+    baseline = await run_scenario(scenario, RunMode.BASELINE)
 
     latency_ms = (time.time() - t0) * 1000
 
@@ -164,10 +165,26 @@ async def run_counterfactual(scenario: Scenario) -> CounterfactualResult:
         and baseline.final_decision == Decision.ALLOW
     )
 
+    divergence_step = protected.blocked_at_step
+    if correctly_blocked:
+        proof_statement = (
+            f"Baseline trajectory progressed through all {len(baseline.actions)} steps unchecked. "
+            f"ChainBreak invariant enforcement severed execution at Step {divergence_step or len(protected.actions)}."
+        )
+    elif protected.final_decision == Decision.ALLOW:
+        proof_statement = f"Benign trajectory completed all {len(protected.actions)} steps without false blocks."
+    else:
+        proof_statement = f"Trajectory halted at Step {divergence_step or len(protected.actions)} under fail-closed security invariants."
+
     return CounterfactualResult(
-        scenario=scenario,
+        scenario=scenario.model_dump() if hasattr(scenario, "model_dump") else scenario,
+        scenario_id=scenario.id,
         baseline=baseline,
         protected=protected,
         correctly_blocked=correctly_blocked,
+        attack_prevented=correctly_blocked,
+        divergence_step=divergence_step,
+        proof_statement=proof_statement,
         detection_latency_ms=latency_ms,
     )
+

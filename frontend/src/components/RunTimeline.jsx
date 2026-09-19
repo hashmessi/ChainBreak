@@ -105,8 +105,8 @@ export default function RunTimeline({
       {/* Vertical Action Timeline */}
       <div className="action-cards-stack">
         {actions.map((act) => {
-          const isDivergence = runMode === 'PROTECTED' && act.step_index === divergenceStep;
-          const isHighlight = act.step_index === highlightedStep;
+          const isDivergence = runMode === 'PROTECTED' && (act.step_index === divergenceStep || (act.step_index + 1) === divergenceStep || act.decision === 'BLOCK');
+          const isHighlight = act.step_index === highlightedStep || (act.step_index + 1) === highlightedStep;
           return (
             <ActionCard
               key={act.id || `${act.step_index}-${act.tool}`}

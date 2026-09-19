@@ -17,13 +17,19 @@ export default function CounterfactualProof({ counterfactualResult, onRunAgain =
   }
 
   const {
-    scenario_id,
+    scenario_id: rawScenarioId,
+    scenario,
     baseline,
     protected: protectedRun,
-    attack_prevented,
+    attack_prevented: rawAttackPrevented,
+    correctly_blocked,
     proof_statement,
-    divergence_step
+    divergence_step: rawDivergenceStep
   } = counterfactualResult;
+
+  const scenario_id = rawScenarioId || scenario?.id || 'UNKNOWN';
+  const attack_prevented = rawAttackPrevented ?? correctly_blocked ?? (protectedRun?.final_decision === 'BLOCK');
+  const divergence_step = rawDivergenceStep ?? protectedRun?.blocked_at_step ?? null;
 
   const totalBaselineSteps = baseline?.actions?.length || 0;
   const totalProtectedSteps = protectedRun?.actions?.length || 0;
@@ -47,9 +53,9 @@ export default function CounterfactualProof({ counterfactualResult, onRunAgain =
   const rows = [];
   for (let i = 0; i < maxSteps; i++) {
     const stepNum = i + 1;
-    const baseAct = baseline?.actions?.find((a) => a.step_index === stepNum);
-    const protAct = protectedRun?.actions?.find((a) => a.step_index === stepNum);
-    const isDivergence = stepNum === divergence_step;
+    const baseAct = baseline?.actions?.[i] || baseline?.actions?.find((a) => a.step_index === i || a.step_index === stepNum);
+    const protAct = protectedRun?.actions?.[i] || protectedRun?.actions?.find((a) => a.step_index === i || a.step_index === stepNum);
+    const isDivergence = (divergence_step === i) || (divergence_step === stepNum) || (protAct && (protAct.decision === 'BLOCK' || protAct.decision === 'HOLD'));
 
     rows.push({
       stepNum,

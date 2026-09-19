@@ -156,9 +156,13 @@ class RunRequest(BaseModel):
 
 class CounterfactualResult(BaseModel):
     scenario: Scenario
+    scenario_id: str = ""
     baseline: ChainState
     protected: ChainState
     correctly_blocked: bool    # protected blocked AND baseline completed
+    attack_prevented: bool = False
+    divergence_step: Optional[int] = None
+    proof_statement: str = ""
     detection_latency_ms: float
 
 
