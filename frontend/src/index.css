@@ -1109,6 +1109,92 @@ body {
   border-top: 1px solid var(--color-graphite);
 }
 
+/* Judge's Plain-English Explainer Card */
+.judges-explainer-card {
+  background: #0f0f13;
+  border: 1.5px solid var(--color-graphite);
+  border-radius: var(--radius-cards);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.judges-explainer-card.danger {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.judges-explainer-card.hold {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(245, 158, 11, 0.04);
+}
+
+.judges-explainer-card.safe {
+  border-color: rgba(34, 197, 94, 0.5);
+  background: rgba(34, 197, 94, 0.04);
+  margin-top: 14px;
+}
+
+.judges-explainer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.judges-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--color-chalk);
+  letter-spacing: 0.06em;
+}
+
+.judges-badge-pill {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: var(--radius-tags);
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--color-compass-gold);
+  border: 1px solid rgba(234, 179, 8, 0.4);
+  letter-spacing: 0.05em;
+  margin-left: auto;
+}
+
+.judges-headline {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+.judges-body-text {
+  font-size: 13.5px;
+  color: #d4d4d8;
+  line-height: 1.55;
+}
+
+.judges-takeaway-strip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: #000000;
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-tags);
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: #e4e4e7;
+  line-height: 1.45;
+}
+
+.judges-takeaway-strip strong {
+  color: var(--color-compass-gold);
+}
+
 .section-label {
   font-family: var(--font-mono);
   font-size: 11px;

@@ -5,6 +5,7 @@ import { Activity, ShieldCheck, ShieldAlert, Cpu, Layers } from 'lucide-react';
 
 export default function RunTimeline({
   chainState,
+  scenarioId = '',
   runMode = 'PROTECTED',
   onModeToggle = null,
   isCounterfactualAvailable = false,
@@ -96,6 +97,7 @@ export default function RunTimeline({
       {(final_decision === 'BLOCK' || final_decision === 'HOLD') && (
         <ViolationPanel
           chainState={chainState}
+          scenarioId={scenarioId}
           onHighlightStep={(stepNum) => onStepRefClick && onStepRefClick(stepNum)}
         />
       )}

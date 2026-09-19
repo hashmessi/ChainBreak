@@ -380,6 +380,7 @@ export default function App() {
 
             <RunTimeline
               chainState={activeChainState}
+              scenarioId={selectedScenario?.id || runResult?.scenario_id}
               runMode={activeRunMode}
               onModeToggle={(mode) => setActiveRunMode(mode)}
               isCounterfactualAvailable={!!runResult?.baseline && !!runResult?.protected}

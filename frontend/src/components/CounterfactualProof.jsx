@@ -1,5 +1,6 @@
 import React from 'react';
-import { ShieldCheck, ShieldAlert, CheckCircle2, XCircle, ArrowRight, GitCommit, Split, Lock } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, CheckCircle2, XCircle, ArrowRight, GitCommit, Split, Lock, Scale, Sparkles } from 'lucide-react';
+import { getJudgesExplainer } from '../utils/explainer';
 
 export default function CounterfactualProof({ counterfactualResult, onRunAgain = null }) {
   if (!counterfactualResult) {
@@ -26,6 +27,20 @@ export default function CounterfactualProof({ counterfactualResult, onRunAgain =
 
   const totalBaselineSteps = baseline?.actions?.length || 0;
   const totalProtectedSteps = protectedRun?.actions?.length || 0;
+
+  // Find culprit action in protected run
+  const culpritAction = protectedRun?.actions?.find(
+    (a) => a.decision === 'BLOCK' || a.decision === 'HOLD' || a.step_index === divergence_step
+  );
+
+  const explainer = getJudgesExplainer({
+    scenarioId: scenario_id,
+    invariantName: culpritAction?.violations?.[0] || '',
+    decision: protectedRun?.final_decision,
+    tool: culpritAction?.tool || '',
+    triggeredBy: culpritAction?.triggered_by || [],
+    reason: culpritAction?.reason || ''
+  });
 
   // Combine actions for comparative row display
   const maxSteps = Math.max(totalBaselineSteps, totalProtectedSteps);
@@ -75,7 +90,7 @@ export default function CounterfactualProof({ counterfactualResult, onRunAgain =
 
           <h3 className="proof-headline">
             {attack_prevented
-              ? `ChainBreak prevented unauthorized transmission at Step ${divergence_step}`
+              ? `ChainBreak neutralized unauthorized transmission at Step ${divergence_step}`
               : protectedRun?.final_decision === 'ALLOW'
               ? 'Autonomous agent completed all benign actions with zero friction'
               : 'Deterministic invariant enforcement completed'}
@@ -86,6 +101,14 @@ export default function CounterfactualProof({ counterfactualResult, onRunAgain =
               {proof_statement}
             </p>
           )}
+
+          {/* Judge's Briefing Inside Counterfactual Banner */}
+          <div className="judges-takeaway-strip" style={{ marginTop: '16px' }}>
+            <Scale size={14} style={{ color: 'var(--color-compass-gold)', flexShrink: 0 }} />
+            <span>
+              <strong>Judge's Briefing:</strong> {explainer.explanation}
+            </span>
+          </div>
         </div>
 
         {/* Key Metrics Cards */}
