@@ -2,11 +2,13 @@ services:
   - type: web
     name: chainbreak-engine
     runtime: python
-    buildCommand: "npm --prefix frontend install && npm --prefix frontend run build && pip install -r requirements.txt"
+    buildCommand: "export CARGO_HOME=/tmp/cargo && npm --prefix frontend install && npm --prefix frontend run build && pip install --upgrade pip && pip install -r requirements.txt"
     startCommand: "uvicorn backend.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: PYTHON_VERSION
-        value: 3.12.0
+        value: 3.12.8
+      - key: CARGO_HOME
+        value: /tmp/cargo
       - key: ENVIRONMENT
         value: production
       - key: LOG_LEVEL

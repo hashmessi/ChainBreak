@@ -35,13 +35,13 @@ Render deploys both the compiled React frontend and the FastAPI backend in a sin
    - Select **Blueprint** (Infrastructure as Code).
    - Connect your GitHub repository: `hashmessi/ChainBreak`.
 
-3. **Render Automatically Reads `render.yaml`:**
-   Render will parse `render.yaml` and configure:
+4. **Render Automatically Reads `render.yaml` & `.python-version`:**
+   Render will parse `render.yaml` and `.python-version` to configure:
    - **Service Name:** `chainbreak-engine`
-   - **Environment:** `Python 3.12`
+   - **Python Version:** `3.12.8` (pinned via [.python-version](file:///c:/Users/Hashvanth/chain-break-dev/ChainBreak/.python-version) and [runtime.txt](file:///c:/Users/Hashvanth/chain-break-dev/ChainBreak/runtime.txt))
    - **Build Command:**
      ```bash
-     npm --prefix frontend install && npm --prefix frontend run build && pip install -r requirements.txt
+     export CARGO_HOME=/tmp/cargo && npm --prefix frontend install && npm --prefix frontend run build && pip install --upgrade pip && pip install -r requirements.txt
      ```
    - **Start Command:**
      ```bash
@@ -49,16 +49,21 @@ Render deploys both the compiled React frontend and the FastAPI backend in a sin
      ```
    - **Health Check Path:** `/api/health`
 
-4. **Set Environment Variables:**
-   Under the Environment Variables section in Render, add:
+5. **Set Environment Variables in Render Dashboard:**
+   Under the Environment Variables section in Render, confirm/add:
+   - `PYTHON_VERSION`: `3.12.8` *(Critical: prevents Render from defaulting to experimental Python 3.14)*
    - `OPENROUTER_API_KEY`: Your OpenRouter key (e.g. `sk-or-v1-...`)
-   - `OPENROUTER_MODEL`: `liquid/lfm-2.5-2.6b:free` (or any preferred OpenRouter model)
+   - `OPENROUTER_MODEL`: `liquid/lfm-2.5-2.6b:free`
    - `ENVIRONMENT`: `production`
 
-5. **Deploy:**
-   - Click **Apply**.
-   - Render will build the React production bundle, install Python dependencies, start the ASGI server, and run healthchecks.
-   - Once deployed, your app will be live at `https://chainbreak-engine.onrender.com` (or your chosen URL).
+6. **Deploy:**
+   - Click **Apply** or **Manual Deploy ➔ Clear build cache & deploy**.
+   - Render will use Python 3.12.8, install pre-built wheels instantly with zero compilation, build the React SPA, start Uvicorn, and run healthchecks.
+   - Once deployed, your app will be live at `https://chainbreak-engine.onrender.com`.
+
+> [!NOTE]
+> **Why Python 3.12?**
+> Render's newest build images can default to experimental Python 3.14. Because packages with native extensions (such as `pydantic-core`) do not have pre-built wheels for Python 3.14 yet, `pip` attempts to compile Rust code via `maturin`, which fails on Render's read-only cargo directory. Pinning `PYTHON_VERSION=3.12.8` resolves this instantly by downloading pre-compiled binary wheels in 2 seconds.
 
 ---
 
