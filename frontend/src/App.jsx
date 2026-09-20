@@ -5,6 +5,7 @@ import RunTimeline from './components/RunTimeline';
 import CounterfactualProof from './components/CounterfactualProof';
 import BenchmarkModal from './components/BenchmarkModal';
 import AiSummaryBot from './components/AiSummaryBot';
+import ArchitectureBrief from './components/ArchitectureBrief';
 
 const TABS = [
   { key: 'scenarios', label: 'Scenarios', icon: Shield },
@@ -357,6 +358,9 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {/* Architectural Differentiator & Drop-in SDK Specification */}
+            <ArchitectureBrief />
 
             <ScenarioSelector
               scenarios={scenarios}

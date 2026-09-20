@@ -36,7 +36,7 @@ def _get_config() -> dict:
     return {
         "api_key": os.getenv("OPENROUTER_API_KEY", ""),
         "base_url": os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
-        "model": os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v4-flash-0731:free"),
+        "model": os.getenv("OPENROUTER_MODEL", "liquid/lfm-2.5-2.6b:free"),
     }
 
 
@@ -205,8 +205,8 @@ async def classify_action(
 
     except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
         status_code = getattr(getattr(e, 'response', None), 'status_code', None)
-        # Resilient fallback if external API is rate-limited (429) or timed out
-        if isinstance(e, httpx.TimeoutException) or status_code in (429, 502, 503, 504):
+        # Resilient fallback if external API is rate-limited (429), unavailable, or timed out
+        if isinstance(e, httpx.TimeoutException) or status_code in (404, 429, 500, 502, 503, 504):
             fallback = _deterministic_fallback(tool, arguments)
             if fallback.classifier_error is None:
                 _SEMANTIC_CACHE[cache_key] = fallback
@@ -238,6 +238,15 @@ def _deterministic_fallback(tool: str, arguments: dict) -> SemanticAttributes:
 
     fallbacks = {
         "read_customer": SemanticAttributes(
+            intent="Read customer PII from internal CRM",
+            data_sensitivity=Sensitivity.HIGH,
+            destination=DestinationType.INTERNAL,
+            data_classes=[DataClass.PII],
+            contains_secret=False,
+            privilege_escalation=False,
+            confidence=1.0,
+        ),
+        "read_customer_data": SemanticAttributes(
             intent="Read customer PII from internal CRM",
             data_sensitivity=Sensitivity.HIGH,
             destination=DestinationType.INTERNAL,

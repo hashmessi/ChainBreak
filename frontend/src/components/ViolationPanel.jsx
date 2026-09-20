@@ -31,19 +31,50 @@ export default function ViolationPanel({ chainState, scenarioId = '', onHighligh
     .filter((s) => s !== haltedStepNum)
     .sort((a, b) => a - b);
 
-  if (!isBlocked && !isHold) {
+  const isSafe = !isBlocked && !isHold;
+
+  const explainer = getJudgesExplainer({
+    scenarioId,
+    invariantName,
+    decision: chainState.final_decision,
+    tool: culpritAction?.tool || '',
+    destination: culpritAction?.destination || '',
+    triggeredBy: validTriggeredSteps,
+    reason: reasonText,
+  });
+
+  const briefingType = isBlocked ? 'danger' : isSafe ? 'success' : 'hold';
+
+  if (isSafe) {
     return (
       <div className="violation-panel clean" id="violation-panel-safe">
         <div className="violation-header">
           <div className="violation-icon-wrap safe">
             <CheckCircle size={18} />
           </div>
-          <div>
+          <div style={{ flex: 1 }}>
             <div className="violation-status-pill safe">TRAJECTORY VERIFIED SAFE</div>
             <h3 className="violation-title">No Invariant Breaches</h3>
             <p className="violation-subtitle">
-              All {chainState.actions?.length || 0} actions within boundaries.
+              All {chainState.actions?.length || 0} actions within authorized boundaries.
             </p>
+          </div>
+        </div>
+        <div className="violation-body">
+          <div className="judges-briefing-card success" style={{ marginTop: '4px' }}>
+            <div className="judges-briefing-header">
+              <Scale size={13} style={{ color: 'var(--color-pulse-green)' }} />
+              <span className="judges-tag">{explainer.title}</span>
+              <span className="judges-badge-pill">{explainer.badge}</span>
+            </div>
+            <div className="judges-headline" style={{ fontSize: '13px' }}>{explainer.headline}</div>
+            <p className="judges-body-text" style={{ fontSize: '12px' }}>{explainer.explanation}</p>
+            <div className="judges-takeaway-strip">
+              <Sparkles size={12} style={{ color: 'var(--color-compass-gold)', flexShrink: 0 }} />
+              <span>
+                <strong>Judge Takeaway:</strong> {explainer.judgeTakeaway}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -75,6 +106,23 @@ export default function ViolationPanel({ chainState, scenarioId = '', onHighligh
         <p className="reason-content" style={{ fontSize: '13px' }}>
           {reasonText.length > 200 ? reasonText.substring(0, 200) + '...' : reasonText}
         </p>
+
+        {/* Judge's Executive Verdict Banner */}
+        <div className={`judges-briefing-card ${briefingType}`} style={{ marginTop: '8px', marginBottom: '8px' }}>
+          <div className="judges-briefing-header">
+            <Scale size={13} style={{ color: isBlocked ? 'var(--color-violation-red)' : 'var(--color-hold-amber)' }} />
+            <span className="judges-tag">{explainer.title}</span>
+            <span className="judges-badge-pill">{explainer.badge}</span>
+          </div>
+          <div className="judges-headline" style={{ fontSize: '13px' }}>{explainer.headline}</div>
+          <p className="judges-body-text" style={{ fontSize: '12px' }}>{explainer.explanation}</p>
+          <div className="judges-takeaway-strip">
+            <Sparkles size={12} style={{ color: 'var(--color-compass-gold)', flexShrink: 0 }} />
+            <span>
+              <strong>Judge Takeaway:</strong> {explainer.judgeTakeaway}
+            </span>
+          </div>
+        </div>
 
         {/* Lineage chain */}
         {validTriggeredSteps.length > 0 && (

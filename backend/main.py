@@ -47,13 +47,25 @@ except ImportError:
     from backend.scenarios import get_scenario, get_all_scenarios
 
 
+import logging
+
+_START_TIME = time.time()
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s [%(levelname)s] [%(name)s]: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("chainbreak")
+
+
 # ─── App Setup ────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("ChainBreak backend starting...")
+    logger.info("ChainBreak production engine starting up on environment: %s", os.getenv("ENVIRONMENT", "production"))
     yield
-    print("ChainBreak backend shutting down.")
+    logger.info("ChainBreak engine shutting down gracefully.")
 
 
 app = FastAPI(
@@ -63,9 +75,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "*")
+allowed_origins = [o.strip() for o in allowed_origins_raw.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Dev only — in production restrict to frontend origin
+    allow_origins=allowed_origins if allowed_origins else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -80,6 +95,9 @@ async def health():
         "status": "ok",
         "product": "ChainBreak",
         "version": "1.0.0",
+        "environment": os.getenv("ENVIRONMENT", "production"),
+        "uptime_seconds": round(time.time() - _START_TIME, 2),
+        "database": "in-memory (deterministic causal invariant graph)",
         "openrouter_configured": bool(
             os.getenv("OPENROUTER_API_KEY", "").startswith("sk-or")
         ),
@@ -193,3 +211,32 @@ async def evaluate_all():
         results=results,
     )
     return report.model_dump()
+
+
+# ─── Production Static Serving & SPA Fallback ──────────────────────────────────
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+_frontend_dist = Path(_backend_dir).parent / "frontend" / "dist"
+
+if _frontend_dist.exists():
+    _assets_dir = _frontend_dist / "assets"
+    if _assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa_app(full_path: str):
+        # Never swallow API routes with 404s
+        if full_path.startswith("api"):
+            raise HTTPException(status_code=404, detail="API route not found")
+
+        target_file = _frontend_dist / full_path
+        if full_path and target_file.is_file():
+            return FileResponse(target_file)
+
+        index_file = _frontend_dist / "index.html"
+        if index_file.is_file():
+            return FileResponse(index_file)
+
+        raise HTTPException(status_code=404, detail="Frontend bundle not found")
+
