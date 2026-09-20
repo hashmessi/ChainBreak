@@ -1,9 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, Compass, Play, AlertCircle, ArrowUpRight, Split, RefreshCw, BarChart2, CheckCircle2 } from 'lucide-react';
+import { Compass, Play, AlertCircle, ArrowUpRight, BarChart2, Layers, Shield, GitCompare } from 'lucide-react';
 import ScenarioSelector from './components/ScenarioSelector';
 import RunTimeline from './components/RunTimeline';
 import CounterfactualProof from './components/CounterfactualProof';
 import BenchmarkModal from './components/BenchmarkModal';
+import AiSummaryBot from './components/AiSummaryBot';
+
+const TABS = [
+  { key: 'scenarios', label: 'Scenarios', icon: Shield },
+  { key: 'interception', label: 'Interception', icon: Layers },
+  { key: 'proof', label: 'Proof', icon: GitCompare },
+];
 
 export default function App() {
   const [backendHealth, setBackendHealth] = useState(null);
@@ -28,6 +35,9 @@ export default function App() {
   const [evaluationReport, setEvaluationReport] = useState(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [showBenchmarkModal, setShowBenchmarkModal] = useState(false);
+
+  // Tab navigation
+  const [activeTab, setActiveTab] = useState('scenarios');
 
   // 1. Periodic health check & scenario catalog fetch
   useEffect(() => {
@@ -83,7 +93,7 @@ export default function App() {
     };
   }, [scenarios.length]);
 
-  // 2. Run Counterfactual (Dual-track baseline vs protected)
+  // 2. Run Counterfactual
   const handleRunCounterfactual = async (scenarioId) => {
     const id = scenarioId || selectedScenario?.id;
     if (!id) return;
@@ -94,16 +104,14 @@ export default function App() {
     setHighlightedStep(null);
 
     try {
-      const res = await fetch(`/api/counterfactual/${id}`, {
-        method: 'POST',
-      });
-      if (!res.ok) {
-        throw new Error(`Execution error: HTTP ${res.status}`);
-      }
+      const res = await fetch(`/api/counterfactual/${id}`, { method: 'POST' });
+      if (!res.ok) throw new Error(`Execution error: HTTP ${res.status}`);
       const data = await res.json();
       if (activeRequestIdRef.current === reqId) {
         setRunResult(data);
-        setActiveRunMode('PROTECTED'); // Start in protected view to observe invariant enforcement
+        setActiveRunMode('PROTECTED');
+        // Auto-switch to Interception tab when results arrive
+        setActiveTab('interception');
       }
     } catch (err) {
       if (activeRequestIdRef.current === reqId) {
@@ -114,18 +122,14 @@ export default function App() {
             ? 'Backend engine unreachable at http://127.0.0.1:8000. Please start the FastAPI backend.'
             : err.message
         );
-        if (isOffline) {
-          setBackendHealth({ status: 'offline' });
-        }
+        if (isOffline) setBackendHealth({ status: 'offline' });
       }
     } finally {
-      if (activeRequestIdRef.current === reqId) {
-        setIsRunning(false);
-      }
+      if (activeRequestIdRef.current === reqId) setIsRunning(false);
     }
   };
 
-  // 3. Run Single Mode (Baseline or Protected)
+  // 3. Run Single Mode
   const handleRunSingle = async (scenarioId, mode = 'PROTECTED') => {
     const id = scenarioId || selectedScenario?.id;
     if (!id) return;
@@ -139,17 +143,11 @@ export default function App() {
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          scenario_id: id,
-          run_mode: mode.toUpperCase(),
-        }),
+        body: JSON.stringify({ scenario_id: id, run_mode: mode.toUpperCase() }),
       });
-      if (!res.ok) {
-        throw new Error(`Run error: HTTP ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`Run error: HTTP ${res.status}`);
       const chainState = await res.json();
       if (activeRequestIdRef.current === reqId) {
-        // Synthesize a counterfactual shape so the UI renders seamlessly
         setRunResult((prev) => ({
           scenario: prev?.scenario || selectedScenario || { id, name: id },
           scenario_id: id,
@@ -161,6 +159,7 @@ export default function App() {
           divergence_step: chainState.blocked_at_step,
         }));
         setActiveRunMode(mode);
+        setActiveTab('interception');
       }
     } catch (err) {
       if (activeRequestIdRef.current === reqId) {
@@ -171,27 +170,21 @@ export default function App() {
             ? 'Backend engine unreachable at http://127.0.0.1:8000. Please start the FastAPI backend.'
             : err.message
         );
-        if (isOffline) {
-          setBackendHealth({ status: 'offline' });
-        }
+        if (isOffline) setBackendHealth({ status: 'offline' });
       }
     } finally {
-      if (activeRequestIdRef.current === reqId) {
-        setIsRunning(false);
-      }
+      if (activeRequestIdRef.current === reqId) setIsRunning(false);
     }
   };
 
-  // 4. Run 20-Scenario Benchmark Suite
+  // 4. Run Benchmark Suite
   const handleRunBenchmark = async () => {
     setIsEvaluating(true);
     setShowBenchmarkModal(true);
 
     try {
       const res = await fetch('/api/evaluate', { method: 'POST' });
-      if (!res.ok) {
-        throw new Error(`Evaluation error: HTTP ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`Evaluation error: HTTP ${res.status}`);
       const report = await res.json();
       setEvaluationReport(report);
     } catch (err) {
@@ -202,9 +195,7 @@ export default function App() {
           ? 'Backend engine unreachable at http://127.0.0.1:8000. Please start the FastAPI backend.'
           : err.message
       );
-      if (isOffline) {
-        setBackendHealth({ status: 'offline' });
-      }
+      if (isOffline) setBackendHealth({ status: 'offline' });
     } finally {
       setIsEvaluating(false);
     }
@@ -212,24 +203,31 @@ export default function App() {
 
   const isConnected = backendHealth && backendHealth.status === 'ok';
 
-  // Get active chain state according to chosen run mode
   const activeChainState = runResult
     ? activeRunMode === 'PROTECTED'
       ? runResult.protected
       : runResult.baseline
     : null;
 
+  // Count for tab badges
+  const scenarioCount = scenarios.length;
+  const stepCount = activeChainState?.actions?.length || 0;
+  const hasProof = !!runResult;
+
   return (
     <div className="app-canvas">
-      {/* Top Navigation Bar */}
+      {/* ═══ Compact Header ═══ */}
       <header className="top-nav">
         <div className="cockpit-container top-nav-inner">
-          <a href="#" className="brand-mark" id="brand-logo">
-            <div className="brand-symbol">
-              <Compass size={14} />
-            </div>
-            <span>ChainBreak</span>
-          </a>
+          <div className="brand-cluster">
+            <a href="#" className="brand-mark" id="brand-logo">
+              <div className="brand-symbol">
+                <Compass size={13} />
+              </div>
+              <span>ChainBreak</span>
+            </a>
+            <span className="brand-subtitle">Runtime Security Invariant Engine</span>
+          </div>
 
           <div className="nav-actions">
             <div className="badge-pill" id="backend-status-badge">
@@ -239,9 +237,15 @@ export default function App() {
                   ? 'CONNECTING...'
                   : isConnected
                   ? 'ENGINE LIVE / 8000'
-                  : 'BACKEND OFFLINE'}
+                  : 'OFFLINE'}
               </span>
             </div>
+
+            <AiSummaryBot
+              runResult={runResult}
+              selectedScenario={selectedScenario}
+              onRunFeatured={handleRunCounterfactual}
+            />
 
             <button
               type="button"
@@ -249,42 +253,59 @@ export default function App() {
               id="run-benchmark-cta"
               onClick={handleRunBenchmark}
             >
-              <span>RUN BENCHMARK</span>
-              <ArrowUpRight size={14} />
+              <span>BENCHMARK</span>
+              <ArrowUpRight size={13} />
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Cockpit Content Column (1200px max-width) */}
-      <main className="cockpit-container">
-        {/* Offline Banner if Backend Unreachable */}
+      {/* ═══ Tab Navigation Bar ═══ */}
+      <nav className="tab-bar">
+        <div className="cockpit-container tab-bar-inner">
+          {TABS.map((tab) => {
+            const IconComp = tab.icon;
+            const badge = tab.key === 'scenarios' ? scenarioCount
+              : tab.key === 'interception' ? (stepCount || null)
+              : tab.key === 'proof' ? (hasProof ? 'READY' : null)
+              : null;
+
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                className={`tab-btn ${activeTab === tab.key ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab.key)}
+                id={`tab-${tab.key}`}
+              >
+                <IconComp size={14} />
+                <span>{tab.label}</span>
+                {badge !== null && (
+                  <span className={`tab-badge ${tab.key === 'proof' && hasProof ? 'proof-ready' : ''}`}>
+                    {badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      {/* ═══ View Content ═══ */}
+      <main className="cockpit-container view-content">
+        {/* Offline Banner */}
         {!loadingHealth && !isConnected && (
-          <div
-            style={{
-              margin: '24px 0 0',
-              padding: '16px 20px',
-              border: '1px solid var(--color-violation-red)',
-              background: 'rgba(255, 69, 58, 0.08)',
-              borderRadius: 'var(--radius-cards)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '12px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <AlertCircle size={16} style={{ color: 'var(--color-violation-red)' }} />
+          <div className="offline-banner">
+            <div className="offline-banner-content">
+              <AlertCircle size={14} style={{ color: 'var(--color-violation-red)' }} />
               <span>
-                BACKEND NOT CONNECTED AT <code>http://127.0.0.1:8000</code>. Start engine with:{' '}
-                <code>python -m uvicorn main:app --host 127.0.0.1 --port 8000</code>
+                Backend offline at <code>127.0.0.1:8000</code>
               </span>
             </div>
             <button
               type="button"
               className="btn-ghost-outline"
-              style={{ fontSize: '11px', padding: '4px 10px' }}
+              style={{ fontSize: '10px', padding: '3px 10px' }}
               onClick={() => window.location.reload()}
             >
               RETRY
@@ -292,146 +313,88 @@ export default function App() {
           </div>
         )}
 
-        {/* Editorial Hero Display */}
-        <section className="hero-section">
-          <div className="badge-pill" style={{ marginBottom: '24px' }}>
-            <span style={{ color: 'var(--color-compass-gold)' }}>INVARIANT ENGINE V1.0</span>
-            <span style={{ color: 'var(--color-graphite)' }}>|</span>
-            <span>FAIL-CLOSED TRAJECTORY INTERCEPTOR</span>
-          </div>
-
-          <h1 className="display-headline" id="main-headline">
-            Runtime security invariants for autonomous agent trajectories.
-          </h1>
-
-          <p className="sub-headline">
-            Individual tool calls appear benign in isolation. ChainBreak monitors the full cumulative
-            data lineage, mathematically enforcing deterministic boundaries to halt unauthorized egress.
-          </p>
-
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="btn-pill-primary"
-              id="hero-run-s6-cta"
-              onClick={() => handleRunCounterfactual(selectedScenario?.id || 'S6')}
-              disabled={isRunning}
-            >
-              <Play size={14} fill="currentColor" />
-              <span>
-                {isRunning
-                  ? 'INTERCEPTING TRAJECTORY...'
-                  : `RUN ${selectedScenario ? selectedScenario.id : 'S6'} COUNTERFACTUAL`}
-              </span>
-            </button>
-            <button
-              type="button"
-              className="btn-ghost-outline"
-              onClick={handleRunBenchmark}
-              id="hero-benchmark-btn"
-            >
-              <BarChart2 size={14} />
-              <span>20-SCENARIO SUITE REPORT</span>
-            </button>
-          </div>
-        </section>
-
-        <hr className="hairline-divider" />
-
-        {/* Error Notification if Run Failed */}
+        {/* Run Error */}
         {runError && (
-          <div
-            style={{
-              margin: '24px 0 0',
-              padding: '12px 18px',
-              border: '1px solid var(--color-violation-red)',
-              background: 'rgba(255, 69, 58, 0.08)',
-              borderRadius: 'var(--radius-cards)',
-              color: 'var(--color-violation-red)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '12px',
-            }}
-          >
-            RUN EXECUTION FAILED: {runError}
+          <div className="run-error-banner">
+            RUN FAILED: {runError}
           </div>
         )}
 
-        {/* Workbench Grid: Left = Scenarios Deck, Right = Live Telemetry Timeline */}
-        <section className="workbench-grid" id="workbench-framework">
-          {/* Left Column: Scenario Deck */}
-          <div className="wireframe-card" id="frame-scenario-selector">
-            <div className="card-header">
-              <span className="card-title">01 / EVALUATION SUITE</span>
-              <span className="meta-label">
-                {scenarios.length > 0 ? `${scenarios.length} SCENARIOS LOADED` : 'LOADING...'}
-              </span>
+        {/* ── TAB: Scenarios ── */}
+        {activeTab === 'scenarios' && (
+          <>
+            <div className="compact-hero">
+              <h1 id="main-headline">
+                Runtime security invariants for autonomous agents.
+              </h1>
+              <p>
+                Select a scenario to run side-by-side counterfactual execution — Baseline vs Protected.
+              </p>
             </div>
-            <p style={{ color: 'var(--color-smoke)', fontSize: '14px', marginBottom: '20px' }}>
-              Select an agent trajectory to run side-by-side counterfactual execution:
-              Unprotected Baseline vs Protected ChainBreak.
-            </p>
+
+            {/* Flagship S6 Marquee Hero Card */}
+            <div className="flagship-demo-banner" id="flagship-s6-banner">
+              <div className="flagship-badge-group">
+                <span className="flagship-pill">FLAGSHIP DEMO</span>
+                <span className="flagship-tag">SCENARIO S6</span>
+              </div>
+              <div className="flagship-content">
+                <div className="flagship-info">
+                  <h3 className="flagship-title">Multi-Step Cumulative Context Exfiltration</h3>
+                  <p className="flagship-description">
+                    3 individually benign reads + 1 summary tool call = silent sensitive data egress. Single-action perimeter firewalls permit all 4 steps. ChainBreak tracks trajectory lineage and severs execution at Step 04.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn-flagship-launch"
+                  disabled={isRunning}
+                  onClick={() => handleRunCounterfactual('S6')}
+                  id="btn-run-flagship-demo"
+                >
+                  <Play size={13} fill="currentColor" />
+                  <span>{isRunning ? 'RUNNING DUAL PROOF...' : 'RUN S6 DUAL PROOF'}</span>
+                </button>
+              </div>
+            </div>
 
             <ScenarioSelector
               scenarios={scenarios}
               selectedScenario={selectedScenario}
-              onSelectScenario={(scen) => {
-                setSelectedScenario(scen);
-                // If this scenario hasn't been run yet, clear previous results or auto-run
-              }}
+              onSelectScenario={(scen) => setSelectedScenario(scen)}
               onRunCounterfactual={(id) => handleRunCounterfactual(id)}
               onRunSingle={(id, mode) => handleRunSingle(id, mode)}
               isLoading={isRunning}
             />
-          </div>
+          </>
+        )}
 
-          {/* Right Column: Live Interceptor Timeline */}
-          <div className="wireframe-card" id="frame-run-timeline">
-            <div className="card-header">
-              <span className="card-title">02 / INTERCEPTION TIMELINE</span>
-              <span className="meta-label">
-                {isRunning ? 'EVALUATING INVARIANTS...' : activeRunMode}
-              </span>
-            </div>
-            <p style={{ color: 'var(--color-smoke)', fontSize: '14px', marginBottom: '20px' }}>
-              Step-by-step semantic extraction and deterministic invariant evaluation with
-              ALLOW, HOLD, and BLOCK enforcement.
-            </p>
+        {/* ── TAB: Interception ── */}
+        {activeTab === 'interception' && (
+          <RunTimeline
+            chainState={activeChainState}
+            scenarioId={selectedScenario?.id || runResult?.scenario_id}
+            runMode={activeRunMode}
+            onModeToggle={(mode) => setActiveRunMode(mode)}
+            isCounterfactualAvailable={!!runResult?.baseline && !!runResult?.protected}
+            divergenceStep={runResult?.divergence_step}
+            highlightedStep={highlightedStep}
+            onStepRefClick={(stepNum) => setHighlightedStep(stepNum)}
+            onRunFeatured={handleRunCounterfactual}
+          />
+        )}
 
-            <RunTimeline
-              chainState={activeChainState}
-              scenarioId={selectedScenario?.id || runResult?.scenario_id}
-              runMode={activeRunMode}
-              onModeToggle={(mode) => setActiveRunMode(mode)}
-              isCounterfactualAvailable={!!runResult?.baseline && !!runResult?.protected}
-              divergenceStep={runResult?.divergence_step}
-              highlightedStep={highlightedStep}
-              onStepRefClick={(stepNum) => setHighlightedStep(stepNum)}
-            />
-          </div>
-        </section>
-
-        <hr className="hairline-divider" />
-
-        {/* Bottom Full-Width Frame: Counterfactual Proof */}
-        <section style={{ padding: '60px 0 80px' }} id="frame-counterfactual-proof">
-          <div className="card-header">
-            <span className="card-title">03 / COUNTERFACTUAL PROOF & AUDIT RECORD</span>
-            <span className="meta-label">DETERMINISTIC VERIFICATION</span>
-          </div>
-
-          <p style={{ color: 'var(--color-smoke)', fontSize: '14px', marginBottom: '24px' }}>
-            Mathematical proof demonstrating that the baseline trajectory leaks sensitive data
-            while ChainBreak's invariant boundary enforces zero egress.
-          </p>
-
+        {/* ── TAB: Proof ── */}
+        {activeTab === 'proof' && (
           <CounterfactualProof
             counterfactualResult={runResult}
             onRunAgain={() => handleRunCounterfactual(selectedScenario?.id)}
+            onRunFeatured={handleRunCounterfactual}
           />
-        </section>
+        )}
       </main>
 
-      {/* 20-Scenario Benchmark Modal */}
+      {/* Benchmark Modal */}
       <BenchmarkModal
         isOpen={showBenchmarkModal}
         onClose={() => setShowBenchmarkModal(false)}
@@ -441,17 +404,10 @@ export default function App() {
       />
 
       {/* Footer */}
-      <footer style={{ borderTop: '1px solid var(--color-graphite)', padding: '32px 0' }}>
-        <div
-          className="cockpit-container"
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}
-        >
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--color-smoke)' }}>
-            CHAINBREAK RUNTIME ENGINE // ARCHITECTURAL RESTRAINT
-          </span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--color-iron)' }}>
-            DESIGN SYSTEM: HYPERSTUDIO (OBSIDIAN BLUEPRINT)
-          </span>
+      <footer className="app-footer">
+        <div className="cockpit-container app-footer-inner">
+          <span>CHAINBREAK RUNTIME ENGINE // V1.0</span>
+          <span>OBSIDIAN DESIGN SYSTEM</span>
         </div>
       </footer>
     </div>

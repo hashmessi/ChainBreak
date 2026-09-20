@@ -1,8 +1,13 @@
 import React from 'react';
 import ActionCard from './ActionCard';
 import ViolationPanel from './ViolationPanel';
-import { Activity, ShieldCheck, ShieldAlert, Cpu, Layers } from 'lucide-react';
+import { Activity, Layers, ShieldAlert, Sparkles, AlertTriangle } from 'lucide-react';
 
+/**
+ * RunTimeline — Full-width "Interception" view
+ * Shows step-by-step timeline with visual connectors.
+ * Steps are collapsed by default (handled by ActionCard).
+ */
 export default function RunTimeline({
   chainState,
   scenarioId = '',
@@ -11,7 +16,8 @@ export default function RunTimeline({
   isCounterfactualAvailable = false,
   divergenceStep = null,
   highlightedStep = null,
-  onStepRefClick = null
+  onStepRefClick = null,
+  onRunFeatured = null
 }) {
   if (!chainState || !chainState.actions || chainState.actions.length === 0) {
     return (
@@ -19,22 +25,40 @@ export default function RunTimeline({
         <Activity size={24} style={{ color: 'var(--color-compass-gold)', marginBottom: '12px' }} />
         <div className="empty-title">NO EXECUTION TELEMETRY</div>
         <p className="empty-desc">
-          Select a scenario and run counterfactual execution to inspect real-time action interception.
+          Select a scenario and run counterfactual execution to inspect action interception.
         </p>
+        {onRunFeatured && (
+          <button
+            type="button"
+            className="btn-pill-primary"
+            style={{ marginTop: '14px', gap: '6px' }}
+            onClick={() => onRunFeatured('S6')}
+            id="btn-timeline-run-s6"
+          >
+            <Sparkles size={13} />
+            <span>RUN S6 TRAJECTORY ATTACK DEMO</span>
+          </button>
+        )}
       </div>
     );
   }
 
   const { actions, privilege_level, sensitive_data_observed, secrets_observed, destinations, final_decision, blocked_at_step } = chainState;
 
+  // Detect if baseline permitted a dangerous exfiltration
+  const isBaselineBreach = runMode === 'BASELINE' && (
+    (destinations && destinations.includes('EXTERNAL') && (sensitive_data_observed || secrets_observed)) ||
+    (scenarioId && ['S1', 'S2', 'S3', 'S6', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].includes(scenarioId.toUpperCase()))
+  );
+
   return (
     <div className="run-timeline-container" id="run-timeline-panel">
       {/* Mode Switcher & Telemetry Header */}
       <div className="timeline-control-header">
         <div className="timeline-title-wrap">
-          <Layers size={16} style={{ color: 'var(--color-compass-gold)' }} />
+          <Layers size={14} style={{ color: 'var(--color-compass-gold)' }} />
           <span className="timeline-section-title">INTERCEPTION TELEMETRY</span>
-          <span className="badge-pill" style={{ padding: '2px 8px', fontSize: '11px' }}>
+          <span className="badge-pill" style={{ padding: '2px 6px', fontSize: '10px' }}>
             {actions.length} {actions.length === 1 ? 'STEP' : 'STEPS'}
           </span>
         </div>
@@ -46,20 +70,37 @@ export default function RunTimeline({
               className={`mode-toggle-btn ${runMode === 'PROTECTED' ? 'active protected' : ''}`}
               onClick={() => onModeToggle('PROTECTED')}
             >
-              PROTECTED (CHAINBREAK)
+              PROTECTED
             </button>
             <button
               type="button"
               className={`mode-toggle-btn ${runMode === 'BASELINE' ? 'active baseline' : ''}`}
               onClick={() => onModeToggle('BASELINE')}
             >
-              BASELINE (UNPROTECTED)
+              BASELINE
             </button>
           </div>
         )}
       </div>
 
-      {/* Cumulative Security Lineage State Bar */}
+      {/* Baseline Breach Warning Callout */}
+      {isBaselineBreach && (
+        <div className="baseline-breach-banner" id="baseline-breach-callout">
+          <div className="baseline-breach-icon">
+            <ShieldAlert size={18} />
+          </div>
+          <div className="baseline-breach-text">
+            <div className="baseline-breach-title">
+              UNMITIGATED SECURITY BREACH (BASELINE MODE)
+            </div>
+            <div className="baseline-breach-sub">
+              Without ChainBreak runtime invariants, all {actions.length} actions executed unchecked. Sensitive data was exfiltrated to an untrusted external endpoint.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cumulative Security State Bar */}
       <div className="cumulative-state-bar">
         <div className="state-cell">
           <span className="state-cell-label">PRIVILEGE:</span>
@@ -93,7 +134,7 @@ export default function RunTimeline({
         </div>
       </div>
 
-      {/* Violation Panel Banner if Blocked or Hold */}
+      {/* Violation Panel (compact inline) */}
       {(final_decision === 'BLOCK' || final_decision === 'HOLD') && (
         <ViolationPanel
           chainState={chainState}
@@ -102,19 +143,25 @@ export default function RunTimeline({
         />
       )}
 
-      {/* Vertical Action Timeline */}
-      <div className="action-cards-stack">
+      {/* Timeline with visual connectors */}
+      <div className="timeline-steps-list">
         {actions.map((act) => {
-          const isDivergence = runMode === 'PROTECTED' && (act.step_index === divergenceStep || (act.step_index + 1) === divergenceStep || act.decision === 'BLOCK');
-          const isHighlight = act.step_index === highlightedStep || (act.step_index + 1) === highlightedStep;
+          const isDivergence = runMode === 'PROTECTED' && (act.decision === 'BLOCK' || act.decision === 'HOLD');
+          const isHighlight = highlightedStep !== null && (Number(act.step_index) + 1 === Number(highlightedStep));
+          const stepDecisionClass = `step-${(act.decision || 'allow').toLowerCase()}`;
+
           return (
-            <ActionCard
+            <div
               key={act.id || `${act.step_index}-${act.tool}`}
-              action={act}
-              isDivergenceStep={isDivergence}
-              isHighlighted={isHighlight}
-              onStepRefClick={onStepRefClick}
-            />
+              className={`timeline-step-wrapper ${stepDecisionClass}`}
+            >
+              <ActionCard
+                action={act}
+                isDivergenceStep={isDivergence}
+                isHighlighted={isHighlight}
+                onStepRefClick={onStepRefClick}
+              />
+            </div>
           );
         })}
       </div>

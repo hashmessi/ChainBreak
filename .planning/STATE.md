@@ -29,17 +29,23 @@
 - ✅ Phase 5 complete: Integration (Full flow: scenario selection → counterfactual run → proof table → 20-scenario benchmark)
 - ✅ Phase 6 complete: Testing + metrics verification (100% detection, 100% prevention, 0% false blocks, browser subagent verified)
 
+- ✅ Phase 7 complete: Polish + Senior Product Designer Review + Demo Script + Git Commit
+  - Fixed off-by-one step indexing contradiction across proof table, headline, and AI assistant
+  - Fixed Benchmark Modal table empty state and metric formulas (all 20 rows rendering)
+  - Added Flagship S6 Hero Card for 1-click dual counterfactual execution
+  - Added urgent red baseline breach alert banner
+  - Fixed scenario category filter keys and outcome badge styling
+  - Created DEMO_SCRIPT.md with 3-minute hackathon judging walkthrough
+
 ### Work Remaining
-- ⬜ Phase 7: Polish + README + demo script + git commit
+- Milestone 1 Complete! Ready for judging and video recording.
 
 ### Key Decisions Made
 - Stack: Python FastAPI + React Vite
 - Design: Hyperstudio Obsidian blueprint (`DESIGN (3).md`)
 - Security: Fail-closed, LLM failure → HOLD, deterministic invariant enforcement
 - True Trajectory: S6 Cumulative Context Exfiltration proven with lineage tracking (`triggered_by`)
+- Step Indexing: Normalized 1-indexed display across all user-facing components
 
 ### Critical Path
-Phase 7 Demo Polish & Script → Final Git Checkpoint
-
-### Next Action
-Proceed to Phase 7: Create comprehensive README.md, write demo video recording script, and prepare git commit.
+Record 3-minute hackathon demo video following `DEMO_SCRIPT.md`.
